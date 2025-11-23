@@ -11,12 +11,12 @@ from .ui import header_menu, addon_preferences, file_browser, dialog
 from .core import formatting, validations, settings, utilities, export, ingest, extension, io
 
 bl_info = {
-    "name": "Send to Unreal, Blender 5.1 Compatible",
-    "author": "Epic Games Inc.",
+    "name": "Send to Unreal, Blender 5.1 Compatible (Community Update)",
+    "author": "Epic Games Inc. (original), Community-maintained",
     "version": (3, 0, 0),
     "blender": (5, 1, 0),
     "location": "Header > Pipeline > Send to Unreal",
-    "description": "Push assets from the Export collection to the first open Unreal Editor instance on your machine.",
+    "description": "Sends Blender assets to the first open Unreal Editor instance on your machine.",
     "warning": "",
     "wiki_url": "https://epicgamesext.github.io/BlenderTools/send2ue",
     "category": "Pipeline",

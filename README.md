@@ -12,10 +12,11 @@ Thank you to **Epic Games** for creating this amazing addon, and the fork author
 | 4.0+       | Not specified    |
 | 3.6        | Not specified    |
 
-
+/home/_101/Repos/BlenderTools/
 ## Setup
 Download or clone the repository.
-Compress the contents to make a single send2ue5.zip
+Compress the contents to make a single send2ue.zip
+(Important: naming the zip file anything other than send2ue.zip caused an error for me.)
 
 In Blender Edit → Preferences → Extensions → Install from Disk... send2ue5.zip
 
