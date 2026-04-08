@@ -18,7 +18,7 @@ Clone the repository.
 Compress the contents to make a single send2ue.zip
 (Important: naming the zip file anything other than send2ue.zip caused an error for me.)
 
-If you download a zip of the repo, Three may be an extra parent folder. You may need to unzip, enter the folder, then change the second folder name to 'send2ue' and zip that-- that is your addon. 
+If you download a zip of the repo, There may be an extra parent folder. You may need to unzip, enter the folder, then change the second folder name to 'send2ue' and zip that-- that is your addon. 
 
 In Blender Edit → Preferences → Extensions → Install from Disk... send2ue5.zip
 
