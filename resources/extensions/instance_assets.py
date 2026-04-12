@@ -4,13 +4,14 @@ import bpy
 import os
 from send2ue.constants import UnrealTypes
 from send2ue.core.extension import ExtensionBase
-from send2ue.dependencies.unreal import UnrealRemoteCalls
 from send2ue.core.utilities import (
     convert_blender_rotation_to_unreal_rotation,
     convert_blender_to_unreal_location,
     get_armature_modifier_rig_object,
     get_asset_name
 )
+from send2ue.dependencies.unreal import UnrealRemoteCalls as UnrealCalls
+from send2ue.dependencies.rpc.factory import make_remote
 
 STATIC_MESH_INSTANCE_NAMES = []
 SKELETAL_MESH_INSTANCE_NAMES = []
@@ -135,10 +136,16 @@ class InstanceAssetsExtension(ExtensionBase):
                 UnrealTypes.SKELETAL_MESH
             ]:
                 scene_object = bpy.data.objects.get(asset_data['_mesh_object_name'])
-                unique_name = scene_object.name
-                location = list(scene_object.matrix_world.translation)
-                rotation = scene_object.rotation_euler
-                scale = scene_object.scale[:]
+                if scene_object.parent and scene_object.parent.type == 'EMPTY':
+                    unique_name = scene_object.parent.name
+                    location = list(scene_object.parent.matrix_world.translation)
+                    rotation = scene_object.parent.rotation_euler
+                    scale = scene_object.parent.scale[:]
+                else:
+                    unique_name = scene_object.name
+                    location = list(scene_object.matrix_world.translation)
+                    rotation = scene_object.rotation_euler
+                    scale = scene_object.scale[:]
 
             # anim sequences use the transforms of the first frame of the action
             if asset_type == UnrealTypes.ANIM_SEQUENCE:
@@ -162,7 +169,7 @@ class InstanceAssetsExtension(ExtensionBase):
                             break
 
             if unique_name:
-                UnrealRemoteCalls.instance_asset(
+                make_remote(UnrealCalls).instance_asset(
                     asset_data['asset_path'],
                     convert_blender_to_unreal_location(location),
                     convert_blender_rotation_to_unreal_rotation(rotation),

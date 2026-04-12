@@ -26,7 +26,6 @@ def apply_groom_modifiers():
 
         for modifier in hair_object.modifiers:
             bpy.context.view_layer.objects.active = hair_object
-            print(modifier.name)
             if modifier.name != 'Surface Deform':
                 bpy.ops.object.modifier_apply(modifier=modifier.name)
 
@@ -51,9 +50,9 @@ class ApplyGroomModifiersExtension(ExtensionBase):
     name = 'applygroommodifiers'
 
     apply_groom_mods: bpy.props.BoolProperty(
-        name= "Apply Groom Mods",
+        name= "Apply Groom Modifiers",
         default= False,
-        description="Automatically applies hair modifiers for export "
+        description="Automatically applies hair modifiers for export. "
                     "Modifiers restored after export finishes."
     )
 
@@ -65,10 +64,8 @@ class ApplyGroomModifiersExtension(ExtensionBase):
 
     def pre_operation(self, properties):
         if self.apply_groom_mods:
-            print('groommods enabled')
             apply_groom_modifiers()
 
     def post_operation(self, properties):
         if self.apply_groom_mods:
-            print('groommods post')
             restore_groom_modifiers()

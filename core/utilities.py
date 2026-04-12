@@ -9,6 +9,7 @@ import importlib
 import tempfile
 import base64
 from . import settings, formatting
+from .. import __package__ as base_package
 from ..ui import header_menu
 from ..dependencies import unreal
 from ..constants import BlenderTypes, UnrealTypes, ToolInfo, PreFixToken, PathModes, RegexPresets
@@ -19,7 +20,7 @@ def track_progress(message='', attribute=''):
     """
     A decorator that makes its wrapped function a queued job.
 
-    :param str message: A the progress message...
+    :param str message: A the progress message.
     :param str attribute: The asset attribute to use in as the message.
     """
 
@@ -79,6 +80,17 @@ def get_operator_class_by_bl_idname(bl_idname):
     context, name = bl_idname.split('.')
     return getattr(bpy.types, f'{context.upper()}_OT_{name}', None)
 
+def find_lod_gflags(string):
+    global_flags = r"\(\?[xims]*\)"
+    matches =  re.findall(global_flags, string)
+    
+    return matches
+
+def strip_lod_gflags(string, matches):
+    for match in matches:
+        string = string.replace(match, "")
+    
+    return string
 
 def get_lod0_name(asset_name, properties):
     """
@@ -88,12 +100,12 @@ def get_lod0_name(asset_name, properties):
     :param PropertyData properties: A property data instance that contains all property values of the tool.
     :return str: The full name for lod0.
     """
-    result = re.search(rf"({properties.lod_regex})", asset_name)
+    result = re.search(properties.lod_regex, asset_name)
+
     if result:
         lod = result.groups()[-1]
         return asset_name.replace(lod, f'{lod[:-1]}0')
     return asset_name
-
 
 def get_lod_index(asset_name, properties):
     """
@@ -103,7 +115,7 @@ def get_lod_index(asset_name, properties):
     :param PropertyData properties: A property data instance that contains all property values of the tool.
     :return int: The lod index
     """
-    result = re.search(rf"({properties.lod_regex})", asset_name)
+    result = re.search(properties.lod_regex, asset_name)
     if result:
         lod = result.groups()[-1]
         return int(lod[-1])
@@ -186,7 +198,8 @@ def get_mesh_unreal_type(mesh_object):
     """
     has_parent_rig = mesh_object.parent and mesh_object.parent.type == BlenderTypes.SKELETON
     rig = get_armature_modifier_rig_object(mesh_object)
-    if has_parent_rig or rig:
+    has_shapekey = mesh_object.active_shape_key
+    if has_parent_rig or rig or has_shapekey:
         return UnrealTypes.SKELETAL_MESH
     return UnrealTypes.STATIC_MESH
 
@@ -290,7 +303,7 @@ def get_current_context():
     :return dict: A dictionary of values that are the current context.
     """
     object_contexts = {}
-    for scene_object in bpy.data.objects:
+    for scene_object in bpy.context.scene.objects:
         active_action_name = ''
         if scene_object.animation_data and scene_object.animation_data.action:
             active_action_name = scene_object.animation_data.action.name
@@ -366,11 +379,17 @@ def get_from_collection(object_type):
     """
     collection_objects = []
 
+    # first check if the collection_objects is overridden
+    for collection_object in bpy.context.window_manager.send2ue.object_collection_override: # type: ignore
+        if collection_object.type == object_type:
+            collection_objects.append(collection_object)
+
     # get the collection with the given name
     export_collection = bpy.data.collections.get(ToolInfo.EXPORT_COLLECTION.value)
-    if export_collection:
+    # if the collection exists and the collection_objects is not overridden
+    if export_collection and not collection_objects:
         # get all the objects in the collection
-        for collection_object in export_collection.all_objects:
+        for collection_object in export_collection.all_objects: # type: ignore
             # if the object is the correct type
             if collection_object.type == object_type:
                 # if the object is visible
@@ -411,9 +430,9 @@ def get_asset_name(asset_name, properties, lod=False):
 
     if properties.import_lods:
         # remove the lod name from the asset
-        result = re.search(rf"({properties.lod_regex})", asset_name)
+        result = re.search(properties.lod_regex, asset_name)
         if result and not lod:
-            asset_name = asset_name.replace(result.groups()[0], '')
+            asset_name = asset_name.split(result.groups()[0])[0]
 
     return asset_name
 
@@ -669,7 +688,7 @@ def set_to_title(text):
     :param str text: The original text to convert to a title.
     :return str: The new title text.
     """
-    return ' '.join([word.capitalize() for word in text.lower().split('_')]).strip('.json')
+    return ' '.join([word.capitalize() for word in text.lower().split('_')]).removesuffix('.json')
 
 
 def set_pose(rig_object, pose_values):
@@ -825,12 +844,19 @@ def is_collision_of(asset_name, mesh_object_name, properties):
     # note we strip whitespace out of the collision name since whitespace is already striped out of the asset name
     # https://github.com/EpicGamesExt/BlenderTools/issues/397#issuecomment-1333982590
     mesh_object_name = mesh_object_name.strip()
+    
+    # strip global regex flags
+    matches = find_lod_gflags(properties.lod_regex)
+    lod_regex = strip_lod_gflags(properties.lod_regex, matches)
+    match_prefix = ''.join(matches)
+
     return bool(
         re.fullmatch(
             r"U(BX|CP|SP|CX)_" + asset_name + r"(_\d+)?",
             mesh_object_name
         ) or re.fullmatch(
-            r"U(BX|CP|SP|CX)_" + asset_name + rf"{properties.lod_regex}(_\d+)?", mesh_object_name
+            match_prefix + r"U(BX|CP|SP|CX)_" + asset_name + rf"{lod_regex}(_\d+)?",
+            mesh_object_name
         )
     )
 
@@ -877,17 +903,12 @@ def remove_from_disk(path, directory=False):
 
     :param str path: An file path.
     :param bool directory: Whether or not the path is a directory.
-    """
-    try:
-        original_umask = os.umask(0)
-        if os.path.exists(path):
-            os.chmod(path, 0o777)
-            if directory:
-                shutil.rmtree(path)
-            else:
-                os.remove(path)
-    finally:
-        os.umask(original_umask)
+    """    
+    if os.path.exists(path):
+        if directory:
+            shutil.rmtree(path, ignore_errors=True)
+        else:
+            os.remove(path)
 
 
 def remove_temp_folder():
@@ -907,7 +928,7 @@ def remove_temp_data():
     """
     temp_folder = get_temp_folder()
     if os.path.exists(temp_folder):
-        shutil.rmtree(temp_folder)
+        shutil.rmtree(temp_folder, ignore_errors=True)
 
 
 def remove_unpacked_files(unpacked_files):
@@ -972,7 +993,7 @@ def escape_local_view():
     for area in bpy.context.screen.areas:
         if area.type == 'VIEW_3D':
             if area.spaces[0].local_view:
-                for scene_object in bpy.data.objects:
+                for scene_object in bpy.context.scene.objects:
                     scene_object.local_view_set(area.spaces[0], True)
 
 
@@ -1102,14 +1123,17 @@ def setup_project(*args):
     bpy.ops.send2ue.reload_extensions()
 
     # create the scene collections
-    addon = bpy.context.preferences.addons.get(ToolInfo.NAME.value)
+    addon = bpy.context.preferences.addons.get(base_package)
     if addon and addon.preferences.automatically_create_collections:
         create_collections()
 
     # create the header menu
-    if importlib.util.find_spec('unpipe') is None:
+    if not os.environ.get('SEND2UE_HIDE_PIPELINE_MENU'):
         header_menu.add_pipeline_menu()
 
+    # create the quick access button
+    if addon.preferences.quick_access_button:
+        header_menu.add_quick_access_button()
 
 def draw_error_message(self, context):
     """
@@ -1208,7 +1232,7 @@ def deselect_all_objects():
     """
     This function deselects all object in the scene.
     """
-    for scene_object in bpy.data.objects:
+    for scene_object in bpy.context.scene.objects:
         scene_object.select_set(False)
 
 

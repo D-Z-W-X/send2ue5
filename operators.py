@@ -6,16 +6,31 @@ import queue
 import threading
 from .constants import ToolInfo, ExtensionTasks
 from .core import export, utilities, settings, validations, extension
-from .ui import file_browser, dialog
+from .ui import file_browser, dialog, addon_preferences
 from .dependencies import unreal
 from .dependencies.rpc import blender_server
 from .properties import register_scene_properties, unregister_scene_properties
+from . import __package__ as base_package
 
 
 class Send2Ue(bpy.types.Operator):
     """Push your assets to disk and/or an open unreal editor instance"""
     bl_idname = "wm.send2ue"
     bl_label = "Push Assets"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.timer = None
+        self.escape = False
+        self.done = False
+        self.max_step = 0
+        self.state = {}
+
+        # add execution queue
+        execution_queue = bpy.app.driver_namespace.get(ToolInfo.EXECUTION_QUEUE.value)
+        if not execution_queue:
+            bpy.app.driver_namespace[ToolInfo.EXECUTION_QUEUE.value] = queue.Queue()
+        self.execution_queue = bpy.app.driver_namespace[ToolInfo.EXECUTION_QUEUE.value]
 
     @staticmethod
     def draw_progress(self, context):
@@ -72,19 +87,6 @@ class Send2Ue(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
     def invoke(self, context, event):
-       # Initialize instance variables (Blender 5.x compatibility)
-        self.timer = None
-        self.escape = False
-        self.done = False
-        self.max_step = 0
-        self.state = {}
-        
-        # add execution queue
-        execution_queue = bpy.app.driver_namespace.get(ToolInfo.EXECUTION_QUEUE.value)
-        if not execution_queue:
-            bpy.app.driver_namespace[ToolInfo.EXECUTION_QUEUE.value] = queue.Queue()
-        self.execution_queue = bpy.app.driver_namespace[ToolInfo.EXECUTION_QUEUE.value]
-        
         if utilities.is_unreal_connected():
             properties = bpy.context.scene.send2ue
             self.pre_operation()
@@ -251,15 +253,15 @@ class ReloadExtensions(bpy.types.Operator):
     bl_label = "Reload Extensions"
 
     def execute(self, context):
-        addon = bpy.context.preferences.addons.get(ToolInfo.NAME.value)
+        addon = bpy.context.preferences.addons.get(base_package)
         if addon:
-            extensions_repo_path = addon.preferences.extensions_repo_path
-            if extensions_repo_path:
-                if not os.path.exists(extensions_repo_path) or not os.path.isdir(
-                    extensions_repo_path
-                ):
-                    self.report(f'"{extensions_repo_path}" is not a folder path on disk.')
-                    return {'FINISHED'}
+            for extension_folder in addon.preferences.extension_folder_list: # type: ignore
+                if extension_folder.folder_path:
+                    if not os.path.exists(extension_folder.folder_path) or not os.path.isdir(
+                        extension_folder.folder_path
+                    ):
+                        self.report(f'"{extension_folder.folder_path}" is not a folder path on disk.')
+                        return {'FINISHED'}
 
         extension_factory = extension.ExtensionFactory()
 
@@ -302,6 +304,62 @@ class NullOperator(bpy.types.Operator):
 
     def execute(self, context):
         return {'FINISHED'}
+    
+
+class GenericUIListOperator:
+    """Mix-in class containing functionality shared by operators
+    that deal with managing Blender list entries."""
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+
+    list_path: bpy.props.StringProperty() # type: ignore
+    active_index_path: bpy.props.StringProperty() # type: ignore
+
+    def get_list(self, context):
+        return addon_preferences.get_context_attr(context, self.list_path)
+
+    def get_active_index(self, context):
+        return addon_preferences.get_context_attr(context, self.active_index_path)
+
+    def set_active_index(self, context, index):
+        addon_preferences.set_context_attr(context, self.active_index_path, index)
+    
+
+class UILIST_ADDON_PREFERENCES_OT_entry_remove(GenericUIListOperator, bpy.types.Operator):
+    """Remove the selected entry from the list"""
+
+    bl_idname = "uilist.addon_preferences_entry_remove"
+    bl_label = "Remove Selected Entry"
+
+    def execute(self, context):
+        addon_preferences = context.preferences.addons[ToolInfo.NAME.value]
+        my_list = self.get_list(addon_preferences)
+        active_index = self.get_active_index(addon_preferences)
+
+        my_list.remove(active_index)
+        to_index = min(active_index, len(my_list) - 1)
+        self.set_active_index(addon_preferences, to_index)
+
+        return {'FINISHED'}
+
+
+class UILIST_ADDON_PREFERENCES_OT_entry_add(GenericUIListOperator, bpy.types.Operator):
+    """Add an entry to the list after the current active item"""
+
+    bl_idname = "uilist.addon_preferences_entry_add"
+    bl_label = "Add Entry"
+
+    def execute(self, context):
+        addon_preferences = context.preferences.addons[ToolInfo.NAME.value]
+        my_list = self.get_list(addon_preferences)
+        active_index = self.get_active_index(addon_preferences)
+
+        to_index = min(len(my_list), active_index + 1)
+
+        my_list.add()
+        my_list.move(len(my_list) - 1, to_index)
+        self.set_active_index(addon_preferences, to_index)
+
+        return {'FINISHED'}
 
 
 operator_classes = [
@@ -315,6 +373,8 @@ operator_classes = [
     ReloadExtensions,
     StartRPCServers,
     NullOperator,
+    UILIST_ADDON_PREFERENCES_OT_entry_remove,
+    UILIST_ADDON_PREFERENCES_OT_entry_add,
 ]
 
 

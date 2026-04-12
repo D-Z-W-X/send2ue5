@@ -4,8 +4,11 @@ import re
 import os
 import bpy
 from . import utilities, formatting, extension
-from ..dependencies.unreal import UnrealRemoteCalls
 from ..constants import BlenderTypes, PathModes, ToolInfo, Extensions, ExtensionTasks, RegexPresets
+from ..dependencies.unreal import UnrealRemoteCalls as UnrealCalls
+from ..dependencies.rpc.factory import make_remote
+
+UnrealRemoteCalls = make_remote(UnrealCalls)
 
 
 class ValidationManager:
@@ -229,7 +232,7 @@ class ValidationManager:
         """
         if self.properties.import_lods:
             for mesh_object in self.mesh_objects:
-                result = re.search(rf"({self.properties.lod_regex})", mesh_object.name)
+                result = re.search(self.properties.lod_regex, mesh_object.name)
                 if not result:
                     utilities.report_error(
                         f'Object "{mesh_object.name}" does not follow the correct lod naming convention defined in the '
@@ -285,7 +288,7 @@ class ValidationManager:
         """
         Checks whether the required unreal plugins are enabled.
         """
-        if self.properties.import_grooms and self.hair_objects:
+        if self.properties.validate_unreal_plugins and self.properties.import_grooms and self.hair_objects:
             # A dictionary of plugins where the key is the plugin name and value is the plugin label.
             groom_plugins = {
                 'HairStrands': 'Groom',
@@ -333,6 +336,16 @@ class ValidationManager:
                         )
                     )
                     return False
+        
+        if self.properties.validate_project_settings and self.properties.path_mode != PathModes.SEND_TO_DISK.value:
+            if not UnrealRemoteCalls.is_using_legacy_fbx_importer():
+                utilities.report_error(
+                    "The Legacy FBX Importer must be used instead of Scene Interchange. Please run this command in the "
+                    "Unreal Editor: Interchange.FeatureFlags.Import.FBX False. Otherwise, persist this in the project's "
+                    "DefaultEngine.ini file."
+                )
+                return False
+
         return True
 
     # TODO: temporary validation before lods support for groom is added

@@ -80,14 +80,26 @@ def export_fbx_file(file_path, export_settings):
     :param str file_path: A file path where the file will be exported.
     :param dict export_settings: A dictionary of blender export settings for the specific file type.
     """
-    io.fbx.export(
-        filepath=file_path,
-        use_selection=True,
-        bake_anim_use_nla_strips=True,
-        bake_anim_use_all_actions=False,
-        object_types={'ARMATURE', 'MESH', 'EMPTY'},
-        **export_settings
-    )
+    major_version = bpy.app.version[0] # type: ignore
+    
+    if major_version <= 3:
+        io.fbx_b3.export(
+            filepath=file_path,
+            use_selection=True,
+            bake_anim_use_nla_strips=True,
+            bake_anim_use_all_actions=False,
+            object_types={'ARMATURE', 'MESH', 'EMPTY'},
+            **export_settings
+        )
+    elif major_version >= 4:
+        io.fbx_b4.export(
+            filepath=file_path,
+            use_selection=True,
+            bake_anim_use_nla_strips=True,
+            bake_anim_use_all_actions=False,
+            object_types={'ARMATURE', 'MESH', 'EMPTY'},
+            **export_settings
+        )
 
 
 def export_alembic_file(file_path, export_settings):
@@ -181,7 +193,7 @@ def get_asset_sockets(asset_name, properties):
     if mesh_object:
         for child in mesh_object.children:
             if child.type == 'EMPTY' and child.name.startswith(f'{PreFixToken.SOCKET.value}_'):
-                name = utilities.get_asset_name(child.name.replace(f'{PreFixToken.SOCKET.value}_', ''), properties)
+                name = utilities.get_asset_name(child.name.replace(f'{PreFixToken.SOCKET.value}_', '').split('.',1)[0], properties)
                 relative_location = utilities.convert_blender_to_unreal_location(
                     child.matrix_local.translation
                 )
@@ -220,8 +232,9 @@ def export_mesh(asset_id, mesh_object, properties, lod=0):
     set_parent_rig_selection(mesh_object, properties)
 
     # select collision meshes
-    asset_name = utilities.get_asset_name(mesh_object.name, properties)
-    utilities.select_asset_collisions(asset_name, properties)
+    if lod == 0:
+        asset_name = utilities.get_asset_name(mesh_object.name, properties)
+        utilities.select_asset_collisions(asset_name, properties)
 
     # Note: this is a weird work around for morph targets not exporting when
     # particle systems are on the mesh. Making them not visible fixes this bug
@@ -291,7 +304,7 @@ def export_hair(asset_id, properties):
     utilities.deselect_all_objects()
 
     # clear animation transformations prior to export so groom exports with no distortion
-    for scene_object in bpy.data.objects:
+    for scene_object in bpy.context.scene.objects:
         if scene_object.animation_data:
             if scene_object.animation_data.action:
                 scene_object.animation_data.action = None
@@ -529,8 +542,8 @@ def send2ue(properties):
     utilities.escape_local_view()
 
     # clear the asset_data and current id
-    bpy.context.window_manager.send2ue.asset_id = ''
-    bpy.context.window_manager.send2ue.asset_data.clear()
+    bpy.context.window_manager.send2ue.asset_id = '' # type: ignore
+    bpy.context.window_manager.send2ue.asset_data.clear() # type: ignore
 
     # if there are no failed validations continue
     validation_manager = validations.ValidationManager(properties)
@@ -538,3 +551,5 @@ def send2ue(properties):
         # create the asset data
         create_asset_data(properties)
         ingest.assets(properties)
+
+    bpy.context.window_manager.send2ue.object_collection_override.clear() # type: ignore

@@ -15,7 +15,7 @@ def add_affixes():
     properties = bpy.context.scene.send2ue
     mesh_objects = utilities.get_from_collection(BlenderTypes.MESH)
     rig_objects = utilities.get_from_collection(BlenderTypes.SKELETON)
-
+    
     for mesh_object in mesh_objects:
         if mesh_object.modifiers:
             is_armature = False
@@ -34,14 +34,21 @@ def add_affixes():
                     mesh_object,
                     properties.extensions.affixes.static_mesh_name_affix
                 )
+        elif mesh_object.active_shape_key:
+            append_affix(
+                mesh_object,
+                properties.extensions.affixes.skeletal_mesh_name_affix
+            )
         else:
             append_affix(mesh_object, properties.extensions.affixes.static_mesh_name_affix)
-
+        
         for slot in mesh_object.material_slots:
             if slot.material:
                 append_affix(slot.material, properties.extensions.affixes.material_name_affix)
 
         texture_images = get_texture_images(mesh_object)
+        for image in texture_images:
+            save_image_filepath(image)
         rename_all_textures(texture_images, append_affix, properties)
 
     for rig_object in rig_objects:
@@ -70,7 +77,7 @@ def remove_affixes():
             discard_affix(mesh_object, properties.extensions.affixes.skeletal_mesh_name_affix)
             if old_mesh_object_name == mesh_object.name:
                 break
-
+        
         for slot in mesh_object.material_slots:
             discard_affix(slot.material, properties.extensions.affixes.material_name_affix)
 
@@ -86,6 +93,9 @@ def remove_affixes():
         for action in actions:
             discard_affix(action, properties.extensions.affixes.animation_sequence_name_affix)
 
+def save_image_filepath(image):
+    path, filename = os.path.split(image.filepath_from_user())
+    AffixesExtension.images_original_paths.append(path)
 
 def append_affix(scene_object, affix, is_image=False):
     """
@@ -210,6 +220,19 @@ def rename_texture(image, new_name):
         if os.path.exists(new_path):
             image.filepath = new_path
 
+def restore_texture_paths():
+    mesh_objects = utilities.get_from_collection(BlenderTypes.MESH)
+    for mesh_object in mesh_objects:
+        texture_images = get_texture_images(mesh_object)
+        
+        for image_index, image in enumerate(texture_images):
+            if image.source == 'FILE':
+                original_path = os.path.join( AffixesExtension.images_original_paths[image_index], image.name )
+                
+                if not os.path.exists(original_path):
+                    shutil.copy(image.filepath_from_user(), original_path)
+
+                image.filepath = original_path
 
 def check_asset_affixes(self, context=None):
     """
@@ -245,6 +268,7 @@ class AffixesExtension(ExtensionBase):
         AddAssetAffixes,
         RemoveAssetAffixes
     ]
+    images_original_paths = []
 
     show_name_affix_settings: bpy.props.BoolProperty(default=False)
     # ---------------------------- name affix settings --------------------------------
@@ -322,6 +346,7 @@ class AffixesExtension(ExtensionBase):
         """
         Defines the pre operation logic that will be run before the operation.
         """
+        AffixesExtension.images_original_paths.clear()
         if self.auto_add_asset_name_affixes:
             add_affixes()
 
@@ -331,6 +356,9 @@ class AffixesExtension(ExtensionBase):
         """
         if self.auto_remove_asset_name_affixes:
             remove_affixes()
+        
+        if properties.import_materials_and_textures and self.auto_add_asset_name_affixes:
+            restore_texture_paths()
 
     def pre_validations(self, properties):
         """

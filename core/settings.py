@@ -213,8 +213,7 @@ def get_rpc_response_timeout(self):
     """
     Overrides getter method for the rpc_response_timeout property.
     """
-    # Access internal storage property (Blender 5.x compatibility)
-    return self.rpc_response_timeout_internal
+    return self.rpc_response_timeout_proxy_value
 
 
 def set_property_group_with_dictionary(property_group, data):
@@ -253,8 +252,8 @@ def set_rpc_response_timeout(self, value):
     if unreal.is_connected():
         unreal.set_rpc_env('RPC_TIME_OUT', value)
     os.environ['RPC_TIME_OUT'] = str(value)
-    # Store in internal property (Blender 5.x compatibility)
-    self.rpc_response_timeout_internal = value
+    self.rpc_response_timeout_proxy_value = value
+
 
 def set_active_template(self=None, context=None):
     """

@@ -8,30 +8,17 @@ import inspect
 from xmlrpc.client import ProtocolError
 from http.client import RemoteDisconnected
 
-sys.path.append(os.path.dirname(__file__))
-import rpc.factory
-import remote_execution
-
 try:
     import unreal
 except ModuleNotFoundError:
     pass
 
-REMAP_PAIRS = []
 UNREAL_PORT = int(os.environ.get('UNREAL_PORT', 9998))
 
 # use a different remap pairs when inside a container
 if os.environ.get('TEST_ENVIRONMENT'):
     UNREAL_PORT = int(os.environ.get('UNREAL_PORT', 8998))
-    REMAP_PAIRS = [(os.environ.get('HOST_REPO_FOLDER'), os.environ.get('CONTAINER_REPO_FOLDER'))]
 
-# this defines a the decorator that makes function run as remote call in unreal
-remote_unreal_decorator = rpc.factory.remote_call(
-    port=UNREAL_PORT,
-    default_imports=['import unreal'],
-    remap_pairs=REMAP_PAIRS,
-)
-rpc_client = rpc.client.RPCClient(port=UNREAL_PORT)
 unreal_response = ''
 
 
@@ -153,6 +140,8 @@ def run_commands(commands):
     :param list commands: A formatted string of python commands that will be run by unreal engine.
     :return str: The stdout produced by the remote python command.
     """
+    from . import remote_execution
+
     # wrap the commands in a try except so that all exceptions can be logged in the output
     commands = ['try:'] + add_indent(commands, '\t') + ['except Exception as error:', '\tprint(error)']
 
@@ -169,6 +158,8 @@ def is_connected():
     Checks the rpc server connection
     """
     try:
+        from .rpc import client
+        rpc_client = client.RPCClient(port=UNREAL_PORT)
         return rpc_client.proxy.is_running()
     except (RemoteDisconnected, ConnectionRefusedError, ProtocolError):
         return False
@@ -178,6 +169,8 @@ def set_rpc_env(key, value):
     """
     Sets an env value on the unreal RPC server.
     """
+    from .rpc import client
+    rpc_client = client.RPCClient(port=UNREAL_PORT)
     rpc_client.proxy.set_env(key, value)
 
 
@@ -188,7 +181,8 @@ def bootstrap_unreal_with_rpc_server():
     if not os.environ.get('TEST_ENVIRONMENT'):
         if not is_connected():
             import bpy
-            rpc_response_timeout = bpy.context.preferences.addons["send2ue"].preferences.rpc_response_timeout
+            from .. import __package__ as base_package
+            rpc_response_timeout = bpy.context.preferences.addons[base_package].preferences.rpc_response_timeout
             dependencies_path = os.path.dirname(__file__)
             result = run_commands(
                 [
@@ -455,8 +449,8 @@ class Unreal:
             )
 
             # source groom asset and target skeletal mesh for the binding asset
-            groom_binding_asset.set_editor_property('groom', groom_asset)
             groom_binding_asset.set_editor_property('target_skeletal_mesh', mesh_asset)
+            groom_binding_asset.set_editor_property('groom', groom_asset)
 
             # if a previous version of the binding asset exists, consolidate all references with new asset
             if existing_binding_asset:
@@ -984,7 +978,6 @@ class UnrealImportSequence(Unreal):
             )
 
 
-@rpc.factory.remote_class(remote_unreal_decorator)
 class UnrealRemoteCalls:
     @staticmethod
     def get_lod_count(asset_path):
@@ -1097,8 +1090,10 @@ class UnrealRemoteCalls:
         :param str setting_name: The setting to query in the supplied section.
         :return: Value of the queried setting.
         """
-        engine_config_dir = unreal.Paths.project_config_dir()
-        config_path = f'{engine_config_dir}{config_name}.ini'
+        uproject_path = unreal.Paths.get_project_file_path() 
+        config_path = os.path.join(os.path.dirname(uproject_path), 'Config',  f'{config_name}.ini') # type: ignore
+        if not os.path.exists(config_path):
+            return None
 
         from configparser import ConfigParser
         # setting strict to False to bypass duplicate keys in the config file
@@ -1106,6 +1101,14 @@ class UnrealRemoteCalls:
         parser.read(config_path)
 
         return parser.get(section_name, setting_name, fallback=None)
+    
+    @staticmethod
+    def is_using_legacy_fbx_importer():
+        if float(unreal.SystemLibrary.get_engine_version().split('-')[0].rsplit('.',1)[0]) >= 5.5:
+            value = unreal.SystemLibrary.get_console_variable_string_value(r'Interchange.FeatureFlags.Import.FBX')
+            return value.lower() in ['false', '0']
+        else:
+            return True
 
     @staticmethod
     def has_socket(asset_path, socket_name):

@@ -66,9 +66,6 @@
   "export_custom_property_fcurves": true,
   "export_object_name_as_root": true,
   "extensions": {
-    "applygroommodifiers": {
-      "apply_groom_mods": true
-    },
     "affixes": {
       "animation_sequence_name_affix": "Anim_",
       "auto_add_asset_name_affixes": false,
@@ -110,7 +107,7 @@
   "import_lods": false,
   "import_materials_and_textures": true,
   "import_meshes": true,
-  "lod_regex": "(_LOD\\d).*",
+  "lod_regex": "(?i)(_LOD\\d).*",
   "path_mode": "send_to_project",
   "tab": "paths",
   "template_version": 1.0,
@@ -319,5 +316,6 @@
   "validate_project_settings": true,
   "validate_scene_scale": true,
   "validate_textures": false,
-  "validate_time_units": "off"
+  "validate_time_units": "off",
+  "validate_unreal_plugins": true
 }

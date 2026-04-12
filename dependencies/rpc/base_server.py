@@ -5,7 +5,9 @@ import queue
 import time
 import logging
 import threading
+import tempfile
 from http import HTTPStatus
+from pathlib import Path
 from xmlrpc.server import SimpleXMLRPCServer, SimpleXMLRPCRequestHandler
 
 # importlib machinery needs to be available for importing client modules
@@ -16,6 +18,7 @@ logger = logging.getLogger(__name__)
 EXECUTION_QUEUE = queue.Queue()
 RETURN_VALUE_NAME = 'RPC_SERVER_RETURN_VALUE'
 ERROR_VALUE_NAME = 'RPC_SERVER_ERROR_VALUE'
+TRACEBACK_FILE = Path(os.environ.get('RPC_TRACEBACK_FILE', Path(tempfile.gettempdir(), 'rpc', 'traceback.log')))
 
 
 def run_in_main_thread(callable_instance, *args):
@@ -99,6 +102,23 @@ class AuthenticatedRequestHandler(SimpleXMLRPCRequestHandler):
         else:
             self.report_401()
 
+    def _dispatch(self, method, params):
+        try: 
+            return self.server.funcs[method](*params) # type: ignore
+        except Exception as error:
+            import traceback
+            traceback.print_exc()
+
+            try:
+                # dump the traceback to a file so that the client can read it.
+                os.makedirs(TRACEBACK_FILE.parent, exist_ok=True)
+                with open(TRACEBACK_FILE, 'w') as file:
+                    file.write(f'Error from server:\n{traceback.format_exc()}')
+            except PermissionError:
+                pass
+
+            raise error
+         
 
 class BaseServer(SimpleXMLRPCServer):
     def __init__(self, *args, **kwargs):
@@ -135,7 +155,6 @@ class BaseRPCServer:
         self.server.register_function(self.set_env)
         self.server.register_introspection_functions()
         self.server.register_multicall_functions()
-        logger.info(f'Started RPC server "{name}".')
 
     @staticmethod
     def is_running():

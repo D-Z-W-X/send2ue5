@@ -4,7 +4,8 @@ import bpy
 from send2ue.core.extension import ExtensionBase
 from send2ue.core import utilities
 from send2ue.constants import UnrealTypes
-from send2ue.dependencies.unreal import UnrealRemoteCalls
+from send2ue.dependencies.unreal import UnrealRemoteCalls as UnrealCalls
+from send2ue.dependencies.rpc.factory import make_remote
 
 
 class CreatePostImportAssetsForGroom(ExtensionBase):
@@ -56,6 +57,7 @@ class CreatePostImportAssetsForGroom(ExtensionBase):
                 mesh_asset_data = utilities.get_related_mesh_asset_data_from_groom_asset_data(asset_data)
                 groom_asset_path = asset_data.get('asset_path', '')
                 mesh_asset_path = mesh_asset_data.get('asset_path', '')
+                UnrealRemoteCalls = make_remote(UnrealCalls)               
 
                 if not UnrealRemoteCalls.asset_exists(groom_asset_path):
                     return

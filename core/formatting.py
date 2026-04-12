@@ -2,7 +2,11 @@
 
 import os
 import bpy
-from ..dependencies.unreal import UnrealRemoteCalls, is_connected
+from ..dependencies.unreal import is_connected
+from ..dependencies.unreal import UnrealRemoteCalls as UnrealCalls
+from ..dependencies.rpc.factory import make_remote
+
+UnrealRemoteCalls = make_remote(UnrealCalls)
 
 
 def set_property_error_message(property_name, error_message):
@@ -103,6 +107,12 @@ def auto_format_unreal_folder_path(name, properties):
     # Make sure the mesh path to unreal is correct as the engine will hard crash if passed an incorrect path
     if not formatted_value:
         error_message = 'Please specify a folder in your unreal project where your asset will be imported.'
+        set_property_error_message(
+            name,
+            error_message
+        )
+    elif not formatted_value.startswith('/'):
+        error_message = 'Path must have a leading forward slash. i.e. "/Game/"'
         set_property_error_message(
             name,
             error_message

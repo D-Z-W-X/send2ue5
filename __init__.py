@@ -3,42 +3,41 @@
 import bpy
 import os
 import importlib
-from .constants import ToolInfo
 from . import operators, properties, constants
 from .dependencies import remote_execution, unreal
-from .dependencies.unreal import UnrealRemoteCalls
 from .ui import header_menu, addon_preferences, file_browser, dialog
 from .core import formatting, validations, settings, utilities, export, ingest, extension, io
 
 bl_info = {
-    "name": "Send to Unreal, Blender 5.1 Compatible (Community Update)",
-    "author": "Epic Games Inc. (original), Community-maintained",
-    "version": (3, 0, 0),
-    "blender": (5, 1, 0),
+    "name": "Send to Unreal",
+    "author": "Epic Games Inc (now a community fork)",
+    "version": (2, 6, 7),
+    "blender": (3, 6, 0),
     "location": "Header > Pipeline > Send to Unreal",
-    "description": "Sends Blender assets to the first open Unreal Editor instance on your machine.",
+    "description": "Sends an asset to the first open Unreal Editor instance on your machine.",
     "warning": "",
-    "wiki_url": "https://epicgamesext.github.io/BlenderTools/send2ue",
+    "wiki_url": "https://poly-hammer.github.io/BlenderTools/send2ue",
     "category": "Pipeline",
 }
 
 modules = [
     export,
     ingest,
+    settings,
     unreal,
     utilities,
     formatting,
     validations,
     dialog,
     file_browser,
-    settings,
     operators,
     properties,
     constants,
     remote_execution,
     addon_preferences,
     extension,
-    io.fbx
+    io.fbx_b3,
+    io.fbx_b4
 ]
 
 
